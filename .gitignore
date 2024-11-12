@@ -1,0 +1,33 @@
+# Ignore common backup and temporary files
+*~
+*.bak
+*.swp
+*.swo
+*.tmp
+*.log
+*.lock
+
+# Ignore MacOS system files
+.DS_Store
+
+# Ignore environment or config files
+.env
+.env.*
+
+# Ignore compiled or executable files
+*.out
+*.exe
+
+# Ignore archives and compressed files
+*.tar
+*.gz
+*.zip
+*.7z
+
+# Ignore Python cache files (if any Python is used for scripting)
+__pycache__/
+*.py[cod]
+
+# Ignore Vim swap files (if you use Vim)
+*.swp
+
