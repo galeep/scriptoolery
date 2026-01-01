@@ -17,7 +17,7 @@ log() {
     echo "$1"
 }
 
-echo "🧹 Claude Pooper Scooper v1.2"
+echo "🧹 Claude Pooper Scooper v1.3"
 echo "=============================="
 echo ""
 
@@ -41,8 +41,9 @@ fi
 
 log "Scanning for orphaned processes..."
 
-# Count before (exclude Claude.app)
-CLAUDE_COUNT=$(ps aux | grep -E "claude" | grep -v grep | grep -v "Claude.app" | grep -v "pooper" | grep -v "worker-service.cjs" | wc -l | tr -d ' ')
+# Count before (exclude Claude.app and unrelated processes with "claude" in path)
+# Only match: bare "claude" process, volta/bun claude binaries, claude subagents
+CLAUDE_COUNT=$(ps aux | grep -E "(^[^ ]+ +[0-9]+ .* claude\s*$)|(\.volta/bin/claude)|(\.bun/bin/claude)" | grep -v grep | grep -v "Claude.app" | grep -v "pooper" | grep -v "worker-service.cjs" | wc -l | tr -d ' ')
 MCP_COUNT=$(pgrep -f "mcp-server.cjs" 2>/dev/null | wc -l | tr -d ' ')
 SUBAGENT_COUNT=$(pgrep -f "disallowedTools" 2>/dev/null | wc -l | tr -d ' ')
 CHROMA_COUNT=$(pgrep -f "chroma-mcp" 2>/dev/null | wc -l | tr -d ' ')
@@ -84,7 +85,7 @@ fi
 sleep 1
 
 # Count after (exclude Claude.app and worker daemon)
-REMAINING=$(ps aux | grep -E "claude|mcp-server.cjs|chroma-mcp" | grep -v grep | grep -v "Claude.app" | grep -v "pooper" | grep -v "worker-service.cjs --daemon" | wc -l | tr -d ' ')
+REMAINING=$(ps aux | grep -E "(claude\s*$)|(\.volta/bin/claude)|(\.bun/bin/claude)|mcp-server\.cjs|chroma-mcp" | grep -v grep | grep -v "Claude.app" | grep -v "pooper" | grep -v "worker-service.cjs --daemon" | wc -l | tr -d ' ')
 WORKER=$(pgrep -f "worker-service.cjs --daemon" 2>/dev/null | wc -l | tr -d ' ')
 
 log "Cleanup complete. Killed ~$KILLED process(es). Remaining: $REMAINING (worker daemon: $WORKER)"
@@ -96,7 +97,7 @@ echo "✅ Done! Log: $LOG_FILE"
 if [ "$REMAINING" -gt 0 ]; then
     echo ""
     echo "Remaining claude-related processes:"
-    ps aux | grep -E "claude|mcp-server|chroma-mcp" | grep -v grep | grep -v "Claude.app" | grep -v "pooper" || true
+    ps aux | grep -E "(claude\s*$)|(\.volta/bin/claude)|(\.bun/bin/claude)|mcp-server\.cjs|chroma-mcp" | grep -v grep | grep -v "Claude.app" | grep -v "pooper" || true
 fi
 
 # Rotate old logs (keep last 30 days)
