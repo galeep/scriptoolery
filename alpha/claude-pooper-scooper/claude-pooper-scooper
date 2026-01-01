@@ -1,0 +1,103 @@
+#!/bin/bash
+# claude-pooper-scooper: Clean up orphaned Claude Code CLI processes
+# Safe to run while Claude Code is NOT active
+# Leaves Claude Desktop (.app) alone
+
+set -e
+
+LOG_DIR="$HOME/.claude_pooper_scooper"
+TIMESTAMP=$(date '+%Y%m%d-%H%M')
+LOG_FILE="$LOG_DIR/cleanup-$TIMESTAMP.log"
+mkdir -p "$LOG_DIR"
+
+log() {
+    local ts=$(date '+%Y%m%d-%H%M%S')
+    local msg="[$ts] $1"
+    echo "$msg" >> "$LOG_FILE"
+    echo "$1"
+}
+
+echo "🧹 Claude Pooper Scooper v1.2"
+echo "=============================="
+echo ""
+
+log "=== Cleanup started ==="
+
+# Check if claude CLI is currently running interactively
+# Exclude: Claude.app, grep, and this script
+ACTIVE_CLAUDE=$(ps aux | grep -E "/claude|^claude" | grep -v grep | grep -v "Claude.app" | grep -v "pooper" | awk '{print $2}' || true)
+
+if [ -n "$ACTIVE_CLAUDE" ]; then
+    log "⚠️  Active Claude CLI session detected. PIDs: $ACTIVE_CLAUDE"
+    echo "   Run this AFTER exiting Claude Code."
+    echo ""
+    read -p "Kill anyway? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        log "Aborted by user."
+        exit 1
+    fi
+fi
+
+log "Scanning for orphaned processes..."
+
+# Count before (exclude Claude.app)
+CLAUDE_COUNT=$(ps aux | grep -E "claude" | grep -v grep | grep -v "Claude.app" | grep -v "pooper" | grep -v "worker-service.cjs" | wc -l | tr -d ' ')
+MCP_COUNT=$(pgrep -f "mcp-server.cjs" 2>/dev/null | wc -l | tr -d ' ')
+SUBAGENT_COUNT=$(pgrep -f "disallowedTools" 2>/dev/null | wc -l | tr -d ' ')
+CHROMA_COUNT=$(pgrep -f "chroma-mcp" 2>/dev/null | wc -l | tr -d ' ')
+
+log "Found: $CLAUDE_COUNT claude, $MCP_COUNT mcp-server, $SUBAGENT_COUNT subagent, $CHROMA_COUNT chroma-mcp"
+
+KILLED=0
+
+# Kill subagents (the ones with --disallowedTools flag)
+if [ "$SUBAGENT_COUNT" -gt 0 ]; then
+    log "Killing $SUBAGENT_COUNT subagent process(es)..."
+    pkill -f "disallowedTools" 2>/dev/null && KILLED=$((KILLED + SUBAGENT_COUNT)) || true
+fi
+
+# Kill MCP servers (but NOT the worker daemon)
+if [ "$MCP_COUNT" -gt 0 ]; then
+    log "Killing $MCP_COUNT orphaned MCP server(s)..."
+    pkill -f "mcp-server.cjs" 2>/dev/null && KILLED=$((KILLED + MCP_COUNT)) || true
+fi
+
+# Kill chroma-mcp processes
+if [ "$CHROMA_COUNT" -gt 0 ]; then
+    log "Killing $CHROMA_COUNT chroma-mcp process(es)..."
+    pkill -f "chroma-mcp" 2>/dev/null && KILLED=$((KILLED + CHROMA_COUNT)) || true
+fi
+
+# Kill claude CLI processes (NOT Claude.app)
+if [ "$CLAUDE_COUNT" -gt 0 ]; then
+    log "Killing $CLAUDE_COUNT claude CLI process(es)..."
+    # Kill volta/bun claude processes but not Claude.app
+    pkill -f "\.volta/bin/claude" 2>/dev/null || true
+    pkill -f "\.bun/bin/claude" 2>/dev/null || true
+    # Kill bare claude processes that aren't the app
+    ps aux | grep -E "claude\s*$" | grep -v grep | grep -v "Claude.app" | awk '{print $2}' | xargs kill 2>/dev/null || true
+    KILLED=$((KILLED + CLAUDE_COUNT))
+fi
+
+# Brief pause for process cleanup
+sleep 1
+
+# Count after (exclude Claude.app and worker daemon)
+REMAINING=$(ps aux | grep -E "claude|mcp-server.cjs|chroma-mcp" | grep -v grep | grep -v "Claude.app" | grep -v "pooper" | grep -v "worker-service.cjs --daemon" | wc -l | tr -d ' ')
+WORKER=$(pgrep -f "worker-service.cjs --daemon" 2>/dev/null | wc -l | tr -d ' ')
+
+log "Cleanup complete. Killed ~$KILLED process(es). Remaining: $REMAINING (worker daemon: $WORKER)"
+
+echo ""
+echo "✅ Done! Log: $LOG_FILE"
+
+# Show what's left (if anything unexpected)
+if [ "$REMAINING" -gt 0 ]; then
+    echo ""
+    echo "Remaining claude-related processes:"
+    ps aux | grep -E "claude|mcp-server|chroma-mcp" | grep -v grep | grep -v "Claude.app" | grep -v "pooper" || true
+fi
+
+# Rotate old logs (keep last 30 days)
+find "$LOG_DIR" -name "cleanup-*.log" -mtime +30 -delete 2>/dev/null || true
