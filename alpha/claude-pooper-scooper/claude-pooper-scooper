@@ -17,15 +17,15 @@ log() {
     echo "$1"
 }
 
-echo "🧹 Claude Pooper Scooper v1.3"
+echo "🧹 Claude Pooper Scooper v1.4"
 echo "=============================="
 echo ""
 
 log "=== Cleanup started ==="
 
 # Check if claude CLI is currently running interactively
-# Exclude: Claude.app, grep, and this script
-ACTIVE_CLAUDE=$(ps aux | grep -E "/claude|^claude" | grep -v grep | grep -v "Claude.app" | grep -v "pooper" | awk '{print $2}' || true)
+# Exclude: Claude.app, grep, this script, and worker daemon
+ACTIVE_CLAUDE=$(ps aux | grep -E "/claude|^claude" | grep -v grep | grep -v "Claude.app" | grep -v "pooper" | grep -v "worker-service.cjs --daemon" | awk '{print $2}' || true)
 
 if [ -n "$ACTIVE_CLAUDE" ]; then
     log "⚠️  Active Claude CLI session detected. PIDs: $ACTIVE_CLAUDE"
